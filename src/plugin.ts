@@ -15,6 +15,7 @@ import {
   logger,
 } from '@elizaos/core';
 import { z } from 'zod';
+import { th } from 'zod/v4/locales';
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -333,6 +334,46 @@ const helloWorldProvider: Provider = {
   },
 };
 
+// Базовый приветственный action
+const greetAction: Action = {
+  name: 'GREET_BASIC',
+  similes: ['GREET', 'SAY_HELLO', 'ПРИВЕТСТВИЕ'],
+  description: 'Отвечает на приветствие кандидата стандартным сообщением',
+
+  validate: async (_runtime, message, _state) => {
+    const text = message.content.text?.toLowerCase() || '';
+    return text.includes('привет') || text.includes('hello');
+  },
+
+  handler: async (_runtime, message, _state, _options, callback) => {
+    const responseContent: Content = {
+      text: 'Привет! Я HR-бот. Чем могу помочь?',
+      actions: ['GREET_BASIC'],
+      source: message.content.source,
+    };
+
+
+    await callback(responseContent);
+    return {
+      text: responseContent.text,
+      values: { greeted: true },
+      data: { actionName: 'GREET_BASIC', messageId: message.id, timestamp: Date.now() },
+      success: true,
+    };
+  },
+
+  examples: [
+    [
+      { name: '{{name1}}', content: { text: 'Привет!' } },
+      { name: 'HR Recruiter', content: { text: 'Привет! Я HR-бот. Чем могу помочь?', actions: ['GREET_BASIC'] } },
+    ],
+    [
+      { name: '{{name1}}', content: { text: 'Hello' } },
+      { name: 'HR Recruiter', content: { text: 'Привет! Я HR-бот. Чем могу помочь?', actions: ['GREET_BASIC'] } },
+    ],
+  ],
+};
+
 export class StarterService extends Service {
   static serviceType = 'starter';
   capabilityDescription =
@@ -355,7 +396,10 @@ export class StarterService extends Service {
     if (!service) {
       throw new Error('Starter service not found');
     }
-    service.stop();
+    // Проверяем, что метод stop существует и это функция
+    if (typeof service.stop === 'function') {
+      service.stop();
+    }
   }
 
   async stop() {
@@ -391,27 +435,29 @@ const plugin: Plugin = {
       );
     }
   },
-  models: {
-    [ModelType.TEXT_SMALL]: async (
-      _runtime,
-      { prompt, stopSequences = [] }: GenerateTextParams
-    ) => {
-      return 'Never gonna give you up, never gonna let you down, never gonna run around and desert you...';
-    },
-    [ModelType.TEXT_LARGE]: async (
-      _runtime,
-      {
-        prompt,
-        stopSequences = [],
-        maxTokens = 8192,
-        temperature = 0.7,
-        frequencyPenalty = 0.7,
-        presencePenalty = 0.7,
-      }: GenerateTextParams
-    ) => {
-      return 'Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...';
-    },
-  },
+  // Закомментировано: mock модели перехватывали запросы и возвращали Rick Roll
+  // Используем реальные модели из character.ts (Google)
+  // models: {
+  //   [ModelType.TEXT_SMALL]: async (
+  //     _runtime,
+  //     { prompt, stopSequences = [] }: GenerateTextParams
+  //   ) => {
+  //     return 'Never gonna give you up, never gonna let you down, never gonna run around and desert you...';
+  //   },
+  //   [ModelType.TEXT_LARGE]: async (
+  //     _runtime,
+  //     {
+  //       prompt,
+  //       stopSequences = [],
+  //       maxTokens = 8192,
+  //       temperature = 0.7,
+  //       frequencyPenalty = 0.7,
+  //       presencePenalty = 0.7,
+  //     }: GenerateTextParams
+  //   ) => {
+  //     return 'Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...';
+  //   },
+  // },
   routes: [
     {
       name: 'helloworld',
@@ -456,7 +502,7 @@ const plugin: Plugin = {
     ],
   },
   services: [StarterService],
-  actions: [helloWorldAction, searchCandidatesAction],
+  actions: [greetAction, helloWorldAction, searchCandidatesAction],
   providers: [helloWorldProvider],
 };
 
