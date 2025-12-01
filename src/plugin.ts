@@ -134,25 +134,80 @@ const helloWorldAction: Action = {
 };
 
 /**
- * Action для поиска кандидатов в сети
+ * Action для поиска в интернете через Serper.dev API
+ * Универсальный поиск для любых запросов, включая поиск кандидатов
  */
-const searchCandidatesAction: Action = {
-  name: 'SEARCH_CANDIDATES',
-  similes: ['FIND_CANDIDATES', 'LOOK_FOR_CANDIDATES', 'SEARCH_TALENT'],
-  description: 'Ищет кандидатов в интернете на работных сайтах и профессиональных сетях',
+const searchWebSerperAction: Action = {
+  name: 'SEARCH_WEB_SERPER',
+  similes: ['SEARCH_WEB', 'GOOGLE_SEARCH', 'WEB_SEARCH', 'ИНТЕРНЕТ_ПОИСК', 'SEARCH_CANDIDATES', 'FIND_ONLINE'],
+  description: 'SEARCH_WEB_SERPER: Web search action that searches on hh.ru, profi.ru, and vseti.app. Use when user asks to find/search candidates, resumes, or job postings online. Returns search results from all three sites with links. REQUIRED for all "find online", "search web", "найди в интернете" requests.',
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() || '';
-    return (
+    const hasSerperKey = !!process.env.SERPER_API_KEY?.trim();
+
+    // Логирование для диагностики
+    logger.info({
+      messageText: text,
+      hasSerperKey,
+      textLength: text.length
+    }, 'SEARCH_WEB_SERPER validate called');
+
+    if (!hasSerperKey) {
+      logger.warn('SERPER_API_KEY not found, SEARCH_WEB_SERPER action will not work');
+      return false;
+    }
+
+    // Проверяем каждое условие отдельно для диагностики
+    const checks = {
+      'найди в интернете': text.includes('найди в интернете'),
+      'поищи в интернете': text.includes('поищи в интернете'),
+      'найди информацию': text.includes('найди информацию'),
+      'поиск в интернете': text.includes('поиск в интернете'),
+      'google search': text.includes('google search'),
+      'search web': text.includes('search web'),
+      'yandex search': text.includes('yandex search'),
+      'find online': text.includes('find online'),
+      'ищи в сети': text.includes('ищи в сети'),
+      'найди кандидатов': text.includes('найди кандидатов'),
+      'найти кандидатов': text.includes('найти кандидатов'),
+      'поиск кандидатов': text.includes('поиск кандидатов'),
+      'ищи кандидатов': text.includes('ищи кандидатов'),
+      'найди специалистов': text.includes('найди специалистов'),
+      'найди + кандидат/резюме/ваканси': text.includes('найди') && (text.includes('кандидат') || text.includes('резюме') || text.includes('ваканси')),
+      'find candidates': text.includes('find candidates'),
+      'search candidates': text.includes('search candidates'),
+      'look for candidates': text.includes('look for candidates'),
+    };
+
+    const isValid = (
+      text.includes('найди в интернете') ||
+      text.includes('поищи в интернете') ||
+      text.includes('найди информацию') ||
+      text.includes('поиск в интернете') ||
+      text.includes('google search') ||
+      text.includes('search web') ||
+      text.includes('yandex search') ||
+      text.includes('find online') ||
+      text.includes('ищи в сети') ||
       text.includes('найди кандидатов') ||
       text.includes('найти кандидатов') ||
       text.includes('поиск кандидатов') ||
       text.includes('ищи кандидатов') ||
       text.includes('найди специалистов') ||
+      (text.includes('найди') && (text.includes('кандидат') || text.includes('резюме') || text.includes('ваканси'))) ||
       text.includes('find candidates') ||
       text.includes('search candidates') ||
       text.includes('look for candidates')
     );
+
+    logger.info({
+      isValid,
+      checks,
+      matchedChecks: Object.entries(checks).filter(([_, value]) => value).map(([key]) => key)
+    }, 'SEARCH_WEB_SERPER validate result');
+
+    return isValid;
   },
 
   handler: async (
@@ -163,115 +218,287 @@ const searchCandidatesAction: Action = {
     callback: HandlerCallback,
     _responses: Memory[]
   ): Promise<ActionResult> => {
+    logger.info('🚀 SEARCH_WEB_SERPER handler STARTED');
+    logger.info({
+      messageId: message.id,
+      messageText: message.content.text,
+      agentId: runtime.agentId,
+      characterName: runtime.character?.name
+    }, 'Handler received message');
+
     try {
-      logger.info('Handling SEARCH_CANDIDATES action');
+      logger.info('Handling SEARCH_WEB_SERPER action');
 
-      // Извлекаем параметры поиска из сообщения
-      const searchText = message.content.text || '';
-
-      // Пытаемся найти ключевые слова: навыки, должность, опыт
-      const skillsMatch = searchText.match(/(?:навыки|skills?):\s*([^,]+)/i);
-      const positionMatch = searchText.match(/(?:должность|позиция|position):\s*([^,]+)/i);
-      const experienceMatch = searchText.match(/(?:опыт|experience):\s*([^,]+)/i);
-      const locationMatch = searchText.match(/(?:город|location):\s*([^,]+)/i);
-
-      const skills = skillsMatch ? skillsMatch[1].trim() : '';
-      const position = positionMatch ? positionMatch[1].trim() : '';
-      const experience = experienceMatch ? experienceMatch[1].trim() : '';
-      const location = locationMatch ? locationMatch[1].trim() : '';
-
-      // Формируем поисковые запросы для разных платформ
-      const searchQueries = [];
-
-      if (position) {
-        searchQueries.push(`${position} резюме ${location ? `в ${location}` : ''}`);
-        searchQueries.push(`${position} candidate ${location ? `in ${location}` : ''}`);
+      const serperApiKey = process.env.SERPER_API_KEY;
+      if (!serperApiKey) {
+        throw new Error('SERPER_API_KEY is not configured');
       }
 
-      if (skills) {
-        searchQueries.push(`резюме ${skills} ${location ? `в ${location}` : ''}`);
-        searchQueries.push(`resume ${skills} ${location ? `in ${location}` : ''}`);
-      }
+      // Извлекаем поисковый запрос из сообщения
+      const messageText = message.content.text || '';
 
-      // Используем web-search плагин, если доступен
-      const webSearchService = runtime.getService('web-search');
+      // Определяем, это поиск кандидатов или общий поиск
+      const isCandidateSearch =
+        messageText.toLowerCase().includes('кандидат') ||
+        messageText.toLowerCase().includes('резюме') ||
+        messageText.toLowerCase().includes('candidate') ||
+        messageText.toLowerCase().includes('resume');
 
-      let searchResults = [];
-      if (webSearchService) {
-        // Выполняем поиск через web-search плагин
-        for (const query of searchQueries.slice(0, 3)) { // Ограничиваем до 3 запросов
-          try {
-            // Здесь должна быть логика вызова web-search сервиса
-            // Это зависит от реализации плагина @elizaos/plugin-web-search
-            logger.info({ query }, 'Searching for candidates with query');
-          } catch (error) {
-            logger.error({ error, query }, 'Error searching with query');
+      let query = messageText;
+
+      // Если это поиск кандидатов, парсим параметры и формируем запрос
+      if (isCandidateSearch) {
+        const skillsMatch = messageText.match(/(?:навыки|skills?):\s*([^,]+)/i);
+        const positionMatch = messageText.match(/(?:должность|позиция|position):\s*([^,]+)/i);
+        const experienceMatch = messageText.match(/(?:опыт|experience):\s*([^,]+)/i);
+        const locationMatch = messageText.match(/(?:город|location):\s*([^,]+)/i);
+
+        const skills = skillsMatch ? skillsMatch[1].trim() : '';
+        const position = positionMatch ? positionMatch[1].trim() : '';
+        const experience = experienceMatch ? experienceMatch[1].trim() : '';
+        const location = locationMatch ? locationMatch[1].trim() : '';
+
+        // Формируем оптимизированный поисковый запрос
+        query = '';
+        if (position) {
+          query += `${position} резюме`;
+        } else if (skills) {
+          query += `резюме ${skills}`;
+        } else {
+          // Извлекаем должность из общего текста
+          const positionFromText = messageText.match(/(?:найди|найти|поиск|ищи)\s+([^с\s]+(?:\s+[^с\s]+)?)\s+(?:кандидат|разработчик|developer)/i);
+          if (positionFromText) {
+            query = `${positionFromText[1]} резюме`;
+          } else {
+            query = messageText.replace(/найди|найти|поиск|ищи|кандидат|candidate/gi, '').trim();
           }
+        }
+
+        if (skills && !position) {
+          query += ` ${skills}`;
+        }
+        if (location) {
+          query += ` ${location}`;
+        }
+        if (experience) {
+          query += ` опыт ${experience}`;
+        }
+      } else {
+        // Для общего поиска убираем триггерные фразы
+        query = messageText
+          .replace(/найди в интернете|поищи в интернете|найди информацию|поиск в интернете|google search|search web|find online|ищи в сети/gi, '')
+          .trim();
+      }
+
+      // Если запрос пустой, используем весь текст сообщения
+      if (!query || query.length < 3) {
+        query = messageText;
+      }
+
+      logger.info({ query }, 'Searching with Serper.dev on hh.ru, profi.ru, vseti.app');
+
+      // Список сайтов для поиска
+      const searchSites = [
+        { name: 'HeadHunter', domain: 'hh.ru', icon: '💼' },
+        { name: 'Profi.ru', domain: 'profi.ru', icon: '🔧' },
+        { name: 'Vseti', domain: 'vseti.app', icon: '🌐' },
+      ];
+
+      // Выполняем поиск на каждом сайте параллельно
+      const searchPromises = searchSites.map(async (site) => {
+        const siteQuery = `site:${site.domain} ${query}`;
+
+        logger.info({ site: site.domain, query: siteQuery }, `Searching on ${site.name}`);
+
+        try {
+          const searchResponse = await fetch('https://google.serper.dev/search', {
+            method: 'POST',
+            headers: {
+              'X-API-KEY': serperApiKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              q: siteQuery,
+              num: 10, // Количество результатов с каждого сайта
+              gl: 'ru', // Геолокация: Россия
+              hl: 'ru', // Язык: русский
+            }),
+          });
+
+          if (!searchResponse.ok) {
+            const errorText = await searchResponse.text();
+            logger.error({
+              site: site.domain,
+              status: searchResponse.status,
+              errorText
+            }, `Serper API error for ${site.name}`);
+            return { site, results: [], error: true };
+          }
+
+          const searchData = await searchResponse.json();
+          const results = (searchData.organic || []).map((result: any) => ({
+            ...result,
+            source: site.name,
+            sourceDomain: site.domain,
+            sourceIcon: site.icon,
+          }));
+
+          logger.info({
+            site: site.domain,
+            resultsCount: results.length
+          }, `Search completed for ${site.name}`);
+
+          return { site, results, error: false };
+        } catch (error) {
+          logger.error({ site: site.domain, error }, `Error searching ${site.name}`);
+          return { site, results: [], error: true };
+        }
+      });
+
+      // Ждем завершения всех запросов
+      const searchResults = await Promise.all(searchPromises);
+
+      // Объединяем результаты со всех сайтов
+      const allResults: any[] = [];
+      const siteStats: Record<string, number> = {};
+
+      searchResults.forEach(({ site, results, error }) => {
+        if (!error && results.length > 0) {
+          allResults.push(...results);
+          siteStats[site.name] = results.length;
+        } else {
+          siteStats[site.name] = 0;
+        }
+      });
+
+      logger.info({
+        totalResults: allResults.length,
+        siteStats,
+        query
+      }, 'All searches completed');
+
+      // Формируем ответ с результатами
+      const results = allResults;
+
+      // Определяем тип поиска по финальному запросу
+      const isCandidateSearchResult =
+        query.toLowerCase().includes('резюме') ||
+        query.toLowerCase().includes('кандидат') ||
+        query.toLowerCase().includes('resume') ||
+        query.toLowerCase().includes('candidate');
+
+      let responseText = '';
+      if (isCandidateSearchResult) {
+        responseText = `🔍 Результаты поиска кандидатов по запросу: "${query}"\n\n`;
+      } else {
+        responseText = `🔍 Результаты поиска по запросу: "${query}"\n\n`;
+      }
+
+      // Показываем статистику по сайтам
+      responseText += `📊 Поиск выполнен на:\n`;
+      Object.entries(siteStats).forEach(([siteName, count]) => {
+        const siteInfo = searchSites.find(s => s.name === siteName);
+        const icon = siteInfo?.icon || '📄';
+        responseText += `   ${icon} ${siteName}: ${count} результатов\n`;
+      });
+      responseText += '\n';
+
+      if (results.length === 0) {
+        responseText += '❌ Результаты не найдены на указанных сайтах. Попробуйте изменить запрос.';
+      } else {
+        responseText += `✅ Всего найдено результатов: ${results.length}\n\n`;
+
+        // Группируем результаты по сайтам
+        const resultsBySite: Record<string, any[]> = {};
+        results.forEach((result: any) => {
+          const siteName = result.source || 'Unknown';
+          if (!resultsBySite[siteName]) {
+            resultsBySite[siteName] = [];
+          }
+          resultsBySite[siteName].push(result);
+        });
+
+        // Показываем результаты, сгруппированные по сайтам
+        let resultIndex = 1;
+        searchSites.forEach((site) => {
+          const siteResults = resultsBySite[site.name] || [];
+          if (siteResults.length > 0) {
+            responseText += `\n${site.icon} **${site.name}** (${siteResults.length}):\n\n`;
+
+            siteResults.slice(0, 5).forEach((result: any) => {
+              responseText += `${resultIndex}. **${result.title || 'Без названия'}**\n`;
+              responseText += `   ${result.snippet || result.description || ''}\n`;
+              if (result.link) {
+                responseText += `   🔗 ${result.link}\n`;
+              }
+              responseText += '\n';
+              resultIndex++;
+            });
+
+            if (siteResults.length > 5) {
+              responseText += `   ... и еще ${siteResults.length - 5} результатов с ${site.name}\n\n`;
+            }
+          }
+        });
+
+        if (results.length > 15) {
+          responseText += `\n📋 Всего найдено: ${results.length} результатов на всех сайтах\n`;
         }
       }
 
-      // Формируем ответ
-      const responseText =
-        `🔍 Ищу кандидатов по вашим критериям...\n\n` +
-        (position ? `📋 Должность: ${position}\n` : '') +
-        (skills ? `🛠️ Навыки: ${skills}\n` : '') +
-        (experience ? `💼 Опыт: ${experience}\n` : '') +
-        (location ? `📍 Локация: ${location}\n` : '') +
-        `\n` +
-        `Проверяю следующие источники:\n` +
-        `• HeadHunter (hh.ru)\n` +
-        `• LinkedIn\n` +
-        `• Avito Работа\n` +
-        `• Habr Career\n` +
-        `• Профессиональные сообщества\n\n` +
-        `Результаты поиска будут проанализированы, и подходящие кандидаты будут добавлены в базу.`;
-
       const responseContent: Content = {
         text: responseText,
-        actions: ['SEARCH_CANDIDATES'],
+        actions: ['SEARCH_WEB_SERPER'],
         source: message.content.source,
       };
 
       await callback(responseContent);
 
       return {
-        text: 'Candidate search initiated',
+        text: `Web search completed: ${results.length} results found`,
         values: {
           success: true,
           searched: true,
-          queries: searchQueries,
-          criteria: {
-            position,
-            skills,
-            experience,
-            location,
-          },
+          query,
+          resultsCount: results.length,
+          results: results.map((r: any) => ({
+            title: r.title,
+            link: r.link,
+            snippet: r.snippet,
+          })),
         },
         data: {
-          actionName: 'SEARCH_CANDIDATES',
+          actionName: 'SEARCH_WEB_SERPER',
           messageId: message.id,
           timestamp: Date.now(),
-          searchQueries,
+          query,
+          siteStats,
+          searchResults: searchResults.map(({ site, results }) => ({
+            site: site.name,
+            domain: site.domain,
+            count: results.length,
+          })),
         },
         success: true,
       };
     } catch (error) {
-      logger.error({ error }, 'Error in SEARCH_CANDIDATES action:');
+      logger.error({ error }, 'Error in SEARCH_WEB_SERPER action:');
 
+      const errorMessage = error instanceof Error ? error.message : String(error);
       await callback({
-        text: 'Произошла ошибка при поиске кандидатов. Попробуйте позже.',
+        text: `❌ Ошибка при поиске в интернете: ${errorMessage}\n\nПроверьте, что SERPER_API_KEY настроен правильно.`,
         error: true,
       });
 
       return {
-        text: 'Failed to search candidates',
+        text: 'Failed to search web',
         values: {
           success: false,
           error: 'SEARCH_FAILED',
         },
         data: {
-          actionName: 'SEARCH_CANDIDATES',
-          error: error instanceof Error ? error.message : String(error),
+          actionName: 'SEARCH_WEB_SERPER',
+          error: errorMessage,
         },
         success: false,
         error: error instanceof Error ? error : new Error(String(error)),
@@ -282,36 +509,82 @@ const searchCandidatesAction: Action = {
   examples: [
     [
       {
-        name: '{{name1}}',
+        name: 'User',
         content: {
-          text: 'Найди кандидатов на позицию Senior React Developer с опытом 5+ лет',
+          text: 'Найди в интернете React разработчиков',
         },
       },
       {
         name: 'HR Recruiter',
         content: {
-          text: '🔍 Ищу кандидатов по вашим критериям...',
-          actions: ['SEARCH_CANDIDATES'],
+          text: '🔍 Результаты поиска по запросу: "React разработчиков"\n\n✅ Найдено результатов: 10\n\n1. **React Developer Jobs - HeadHunter**\n   ...',
+          actions: ['SEARCH_WEB_SERPER'],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: 'User',
         content: {
-          text: 'Поиск кандидатов: должность Python разработчик, навыки: Django, PostgreSQL, опыт: 3+ года, город: Москва',
+          text: 'Поищи в интернете вакансии Python',
         },
       },
       {
         name: 'HR Recruiter',
         content: {
-          text: '🔍 Ищу кандидатов по вашим критериям...',
-          actions: ['SEARCH_CANDIDATES'],
+          text: '🔍 Результаты поиска по запросу: "вакансии Python"\n\n✅ Найдено результатов: 8\n\n1. **Python Developer Jobs**\n   ...',
+          actions: ['SEARCH_WEB_SERPER'],
+        },
+      },
+    ],
+    [
+      {
+        name: 'User',
+        content: {
+          text: 'Найди кандидатов на позицию Frontend Developer',
+        },
+      },
+      {
+        name: 'HR Recruiter',
+        content: {
+          text: '🔍 Результаты поиска кандидатов по запросу: "Frontend Developer резюме"\n\n✅ Найдено результатов: 12\n\n1. **Frontend Developer Resume**\n   ...',
+          actions: ['SEARCH_WEB_SERPER'],
+        },
+      },
+    ],
+    [
+      {
+        name: 'User',
+        content: {
+          text: 'search web for React developers',
+        },
+      },
+      {
+        name: 'HR Recruiter',
+        content: {
+          text: '🔍 Результаты поиска по запросу: "React developers"\n\n✅ Найдено результатов: 10\n\n1. **React Developer Jobs**\n   ...',
+          actions: ['SEARCH_WEB_SERPER'],
+        },
+      },
+    ],
+    [
+      {
+        name: 'User',
+        content: {
+          text: 'find online Python candidates',
+        },
+      },
+      {
+        name: 'HR Recruiter',
+        content: {
+          text: '🔍 Результаты поиска по запросу: "Python candidates"\n\n✅ Найдено результатов: 8\n\n1. **Python Developer Resume**\n   ...',
+          actions: ['SEARCH_WEB_SERPER'],
         },
       },
     ],
   ],
 };
+
 
 /**
  * Example Hello World Provider
@@ -352,8 +625,10 @@ const greetAction: Action = {
       source: message.content.source,
     };
 
+    if (callback) {
+      await callback(responseContent);
+    }
 
-    await callback(responseContent);
     return {
       text: responseContent.text,
       values: { greeted: true },
@@ -410,8 +685,8 @@ export class StarterService extends Service {
 const plugin: Plugin = {
   name: 'hr-recruiter-plugin',
   description: 'HR Recruiter plugin with candidate search capabilities',
-  // Set lowest priority so real models take precedence
-  priority: -1000,
+  // Higher priority to ensure actions are selected
+  priority: 100,
   config: {
     EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
   },
@@ -475,8 +750,29 @@ const plugin: Plugin = {
     MESSAGE_RECEIVED: [
       async (params) => {
         logger.info('MESSAGE_RECEIVED event received');
-        // print the keys
         logger.info({ keys: Object.keys(params) }, 'MESSAGE_RECEIVED param keys');
+
+        // Попытка принудительно вызвать action, если validate возвращает true
+        if (params.message && params.runtime) {
+          const messageText = params.message.content?.text || '';
+          const text = messageText.toLowerCase();
+
+          // Проверяем условия для SEARCH_WEB_SERPER
+          const shouldTrigger = (
+            text.includes('найди в интернете') ||
+            text.includes('поищи в интернете') ||
+            text.includes('найди информацию') ||
+            text.includes('найди кандидатов') ||
+            text.includes('search web') ||
+            text.includes('find online')
+          ) && !!process.env.SERPER_API_KEY?.trim();
+
+          if (shouldTrigger) {
+            logger.warn('⚠️ Message should trigger SEARCH_WEB_SERPER action!');
+            logger.warn('⚠️ If handler is not called, LLM is not selecting this action!');
+            logger.info('Check if SEARCH_WEB_SERPER action is registered and validate returns true');
+          }
+        }
       },
     ],
     VOICE_MESSAGE_RECEIVED: [
@@ -502,8 +798,14 @@ const plugin: Plugin = {
     ],
   },
   services: [StarterService],
-  actions: [greetAction, helloWorldAction, searchCandidatesAction],
+  actions: [greetAction, helloWorldAction, searchWebSerperAction],
   providers: [helloWorldProvider],
 };
+
+logger.info('📦 hr-recruiter-plugin module loaded');
+logger.info({
+  actions: plugin.actions?.map(a => a.name) || [],
+  services: plugin.services?.map(s => s.serviceType || s.name) || []
+}, 'Plugin structure');
 
 export default plugin;

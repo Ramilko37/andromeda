@@ -158,7 +158,7 @@ class TelegramJobsService extends Service {
     /**
      * Получение резюме из канала
      */
-    async fetchChannelMessages(limit: number = 100): Promise<CandidateResume[]> {
+    async fetchChannelMessages(limit: number = 10): Promise<CandidateResume[]> {
         try {
             logger.info({ channel: this.channelUsername, limit }, 'Fetching from Telegram channel');
 

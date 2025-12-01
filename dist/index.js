@@ -7477,11 +7477,11 @@ var require_feeds = __commonJS((exports) => {
         if (href2) {
           entry.link = href2;
         }
-        var description = fetch("summary", children) || fetch("content", children);
+        var description = fetch2("summary", children) || fetch2("content", children);
         if (description) {
           entry.description = description;
         }
-        var pubDate = fetch("updated", children);
+        var pubDate = fetch2("updated", children);
         if (pubDate) {
           entry.pubDate = new Date(pubDate);
         }
@@ -7495,7 +7495,7 @@ var require_feeds = __commonJS((exports) => {
       feed.link = href;
     }
     addConditionally(feed, "description", "subtitle", childs);
-    var updated = fetch("updated", childs);
+    var updated = fetch2("updated", childs);
     if (updated) {
       feed.updated = new Date(updated);
     }
@@ -7515,7 +7515,7 @@ var require_feeds = __commonJS((exports) => {
         addConditionally(entry, "title", "title", children);
         addConditionally(entry, "link", "link", children);
         addConditionally(entry, "description", "description", children);
-        var pubDate = fetch("pubDate", children);
+        var pubDate = fetch2("pubDate", children);
         if (pubDate)
           entry.pubDate = new Date(pubDate);
         return entry;
@@ -7524,7 +7524,7 @@ var require_feeds = __commonJS((exports) => {
     addConditionally(feed, "title", "title", childs);
     addConditionally(feed, "link", "link", childs);
     addConditionally(feed, "description", "description", childs);
-    var updated = fetch("lastBuildDate", childs);
+    var updated = fetch2("lastBuildDate", childs);
     if (updated) {
       feed.updated = new Date(updated);
     }
@@ -7570,7 +7570,7 @@ var require_feeds = __commonJS((exports) => {
   function getOneElement(tagName, node) {
     return (0, legacy_1.getElementsByTagName)(tagName, node, true, 1)[0];
   }
-  function fetch(tagName, where, recurse) {
+  function fetch2(tagName, where, recurse) {
     if (recurse === undefined) {
       recurse = false;
     }
@@ -7580,7 +7580,7 @@ var require_feeds = __commonJS((exports) => {
     if (recurse === undefined) {
       recurse = false;
     }
-    var val = fetch(tagName, where, recurse);
+    var val = fetch2(tagName, where, recurse);
     if (val)
       obj[prop] = val;
   }
@@ -7739,7 +7739,7 @@ var require_FeedHandler = __commonJS((exports) => {
           feed.link = href;
         }
         addConditionally(feed, "description", "subtitle", childs);
-        var updated = fetch("updated", childs);
+        var updated = fetch2("updated", childs);
         if (updated) {
           feed.updated = new Date(updated);
         }
@@ -7753,11 +7753,11 @@ var require_FeedHandler = __commonJS((exports) => {
           if (href2) {
             entry.link = href2;
           }
-          var description = fetch("summary", children) || fetch("content", children);
+          var description = fetch2("summary", children) || fetch2("content", children);
           if (description) {
             entry.description = description;
           }
-          var pubDate = fetch("updated", children);
+          var pubDate = fetch2("updated", children);
           if (pubDate) {
             entry.pubDate = new Date(pubDate);
           }
@@ -7771,7 +7771,7 @@ var require_FeedHandler = __commonJS((exports) => {
         addConditionally(feed, "title", "title", childs);
         addConditionally(feed, "link", "link", childs);
         addConditionally(feed, "description", "description", childs);
-        var updated = fetch("lastBuildDate", childs);
+        var updated = fetch2("lastBuildDate", childs);
         if (updated) {
           feed.updated = new Date(updated);
         }
@@ -7783,7 +7783,7 @@ var require_FeedHandler = __commonJS((exports) => {
           addConditionally(entry, "title", "title", children);
           addConditionally(entry, "link", "link", children);
           addConditionally(entry, "description", "description", children);
-          var pubDate = fetch("pubDate", children);
+          var pubDate = fetch2("pubDate", children);
           if (pubDate)
             entry.pubDate = new Date(pubDate);
           entry.media = getMediaElements(children);
@@ -7847,7 +7847,7 @@ var require_FeedHandler = __commonJS((exports) => {
   function getOneElement(tagName, node) {
     return DomUtils.getElementsByTagName(tagName, node, true, 1)[0];
   }
-  function fetch(tagName, where, recurse) {
+  function fetch2(tagName, where, recurse) {
     if (recurse === undefined) {
       recurse = false;
     }
@@ -7864,7 +7864,7 @@ var require_FeedHandler = __commonJS((exports) => {
     if (recurse === undefined) {
       recurse = false;
     }
-    var tmp = fetch(what, where, recurse);
+    var tmp = fetch2(what, where, recurse);
     if (tmp)
       obj[prop] = tmp;
   }
@@ -32333,103 +32333,230 @@ var helloWorldAction = {
     ]
   ]
 };
-var searchCandidatesAction = {
-  name: "SEARCH_CANDIDATES",
-  similes: ["FIND_CANDIDATES", "LOOK_FOR_CANDIDATES", "SEARCH_TALENT"],
-  description: "Ищет кандидатов в интернете на работных сайтах и профессиональных сетях",
+var searchWebSerperAction = {
+  name: "SEARCH_WEB_SERPER",
+  similes: ["SEARCH_WEB", "GOOGLE_SEARCH", "WEB_SEARCH", "ИНТЕРНЕТ_ПОИСК", "SEARCH_CANDIDATES", "FIND_ONLINE"],
+  description: "SEARCH_WEB_SERPER: Performs real-time web search via Google Search API (Serper.dev). Use this action when user requests to find information online, search for candidates, resumes, job postings, or any web content. This action returns actual search results with links. CRITICAL: If validate() returns true, you MUST select this action - do NOT use REPLY action instead. This is the ONLY way to perform web searches.",
   validate: async (runtime, message, _state) => {
     const text = message.content.text?.toLowerCase() || "";
-    return text.includes("найди кандидатов") || text.includes("найти кандидатов") || text.includes("поиск кандидатов") || text.includes("ищи кандидатов") || text.includes("найди специалистов") || text.includes("find candidates") || text.includes("search candidates") || text.includes("look for candidates");
+    const hasSerperKey = !!process.env.SERPER_API_KEY?.trim();
+    logger.info({
+      messageText: text,
+      hasSerperKey,
+      textLength: text.length
+    }, "SEARCH_WEB_SERPER validate called");
+    if (!hasSerperKey) {
+      logger.warn("SERPER_API_KEY not found, SEARCH_WEB_SERPER action will not work");
+      return false;
+    }
+    const checks = {
+      "найди в интернете": text.includes("найди в интернете"),
+      "поищи в интернете": text.includes("поищи в интернете"),
+      "найди информацию": text.includes("найди информацию"),
+      "поиск в интернете": text.includes("поиск в интернете"),
+      "google search": text.includes("google search"),
+      "search web": text.includes("search web"),
+      "yandex search": text.includes("yandex search"),
+      "find online": text.includes("find online"),
+      "ищи в сети": text.includes("ищи в сети"),
+      "найди кандидатов": text.includes("найди кандидатов"),
+      "найти кандидатов": text.includes("найти кандидатов"),
+      "поиск кандидатов": text.includes("поиск кандидатов"),
+      "ищи кандидатов": text.includes("ищи кандидатов"),
+      "найди специалистов": text.includes("найди специалистов"),
+      "найди + кандидат/резюме/ваканси": text.includes("найди") && (text.includes("кандидат") || text.includes("резюме") || text.includes("ваканси")),
+      "find candidates": text.includes("find candidates"),
+      "search candidates": text.includes("search candidates"),
+      "look for candidates": text.includes("look for candidates")
+    };
+    const isValid = text.includes("найди в интернете") || text.includes("поищи в интернете") || text.includes("найди информацию") || text.includes("поиск в интернете") || text.includes("google search") || text.includes("search web") || text.includes("yandex search") || text.includes("find online") || text.includes("ищи в сети") || text.includes("найди кандидатов") || text.includes("найти кандидатов") || text.includes("поиск кандидатов") || text.includes("ищи кандидатов") || text.includes("найди специалистов") || text.includes("найди") && (text.includes("кандидат") || text.includes("резюме") || text.includes("ваканси")) || text.includes("find candidates") || text.includes("search candidates") || text.includes("look for candidates");
+    logger.info({
+      isValid,
+      checks,
+      matchedChecks: Object.entries(checks).filter(([_, value]) => value).map(([key]) => key)
+    }, "SEARCH_WEB_SERPER validate result");
+    return isValid;
   },
   handler: async (runtime, message, _state, _options, callback, _responses) => {
+    logger.info("\uD83D\uDE80 SEARCH_WEB_SERPER handler STARTED");
+    logger.info({
+      messageId: message.id,
+      messageText: message.content.text
+    }, "Handler received message");
     try {
-      logger.info("Handling SEARCH_CANDIDATES action");
-      const searchText = message.content.text || "";
-      const skillsMatch = searchText.match(/(?:навыки|skills?):\s*([^,]+)/i);
-      const positionMatch = searchText.match(/(?:должность|позиция|position):\s*([^,]+)/i);
-      const experienceMatch = searchText.match(/(?:опыт|experience):\s*([^,]+)/i);
-      const locationMatch = searchText.match(/(?:город|location):\s*([^,]+)/i);
-      const skills = skillsMatch ? skillsMatch[1].trim() : "";
-      const position = positionMatch ? positionMatch[1].trim() : "";
-      const experience = experienceMatch ? experienceMatch[1].trim() : "";
-      const location = locationMatch ? locationMatch[1].trim() : "";
-      const searchQueries = [];
-      if (position) {
-        searchQueries.push(`${position} резюме ${location ? `в ${location}` : ""}`);
-        searchQueries.push(`${position} candidate ${location ? `in ${location}` : ""}`);
+      logger.info("Handling SEARCH_WEB_SERPER action");
+      const serperApiKey = process.env.SERPER_API_KEY;
+      if (!serperApiKey) {
+        throw new Error("SERPER_API_KEY is not configured");
       }
-      if (skills) {
-        searchQueries.push(`резюме ${skills} ${location ? `в ${location}` : ""}`);
-        searchQueries.push(`resume ${skills} ${location ? `in ${location}` : ""}`);
-      }
-      const webSearchService = runtime.getService("web-search");
-      let searchResults = [];
-      if (webSearchService) {
-        for (const query of searchQueries.slice(0, 3)) {
-          try {
-            logger.info({ query }, "Searching for candidates with query");
-          } catch (error) {
-            logger.error({ error, query }, "Error searching with query");
+      const messageText = message.content.text || "";
+      const isCandidateSearch = messageText.toLowerCase().includes("кандидат") || messageText.toLowerCase().includes("резюме") || messageText.toLowerCase().includes("candidate") || messageText.toLowerCase().includes("resume");
+      let query = messageText;
+      if (isCandidateSearch) {
+        const skillsMatch = messageText.match(/(?:навыки|skills?):\s*([^,]+)/i);
+        const positionMatch = messageText.match(/(?:должность|позиция|position):\s*([^,]+)/i);
+        const experienceMatch = messageText.match(/(?:опыт|experience):\s*([^,]+)/i);
+        const locationMatch = messageText.match(/(?:город|location):\s*([^,]+)/i);
+        const skills = skillsMatch ? skillsMatch[1].trim() : "";
+        const position = positionMatch ? positionMatch[1].trim() : "";
+        const experience = experienceMatch ? experienceMatch[1].trim() : "";
+        const location = locationMatch ? locationMatch[1].trim() : "";
+        query = "";
+        if (position) {
+          query += `${position} резюме`;
+        } else if (skills) {
+          query += `резюме ${skills}`;
+        } else {
+          const positionFromText = messageText.match(/(?:найди|найти|поиск|ищи)\s+([^с\s]+(?:\s+[^с\s]+)?)\s+(?:кандидат|разработчик|developer)/i);
+          if (positionFromText) {
+            query = `${positionFromText[1]} резюме`;
+          } else {
+            query = messageText.replace(/найди|найти|поиск|ищи|кандидат|candidate/gi, "").trim();
           }
         }
+        if (skills && !position) {
+          query += ` ${skills}`;
+        }
+        if (location) {
+          query += ` ${location}`;
+        }
+        if (experience) {
+          query += ` опыт ${experience}`;
+        }
+      } else {
+        query = messageText.replace(/найди в интернете|поищи в интернете|найди информацию|поиск в интернете|google search|search web|find online|ищи в сети/gi, "").trim();
       }
-      const responseText = `\uD83D\uDD0D Ищу кандидатов по вашим критериям...
+      if (!query || query.length < 3) {
+        query = messageText;
+      }
+      logger.info({ query }, "Searching with Serper.dev");
+      logger.info({ query, url: "https://google.serper.dev/search" }, "Sending request to Serper.dev API");
+      const searchResponse = await fetch("https://google.serper.dev/search", {
+        method: "POST",
+        headers: {
+          "X-API-KEY": serperApiKey,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          q: query,
+          num: 10,
+          gl: "ru",
+          hl: "ru"
+        })
+      });
+      logger.info({
+        status: searchResponse.status,
+        statusText: searchResponse.statusText,
+        ok: searchResponse.ok
+      }, "Serper.dev API response received");
+      if (!searchResponse.ok) {
+        const errorText = await searchResponse.text();
+        logger.error({
+          status: searchResponse.status,
+          errorText
+        }, "Serper API error");
+        throw new Error(`Serper API error: ${searchResponse.status} - ${errorText}`);
+      }
+      const searchData = await searchResponse.json();
+      logger.info({
+        organicResults: searchData.organic?.length || 0,
+        hasRelatedQuestions: !!searchData.relatedQuestions?.length
+      }, "Serper search data parsed");
+      logger.info({
+        totalResults: searchData.organic?.length || 0,
+        query
+      }, "Serper search completed");
+      const results = searchData.organic || [];
+      const isCandidateSearchResult = query.toLowerCase().includes("резюме") || query.toLowerCase().includes("кандидат") || query.toLowerCase().includes("resume") || query.toLowerCase().includes("candidate");
+      let responseText = "";
+      if (isCandidateSearchResult) {
+        responseText = `\uD83D\uDD0D Результаты поиска кандидатов по запросу: "${query}"
 
-` + (position ? `\uD83D\uDCCB Должность: ${position}
-` : "") + (skills ? `\uD83D\uDEE0️ Навыки: ${skills}
-` : "") + (experience ? `\uD83D\uDCBC Опыт: ${experience}
-` : "") + (location ? `\uD83D\uDCCD Локация: ${location}
-` : "") + `
-` + `Проверяю следующие источники:
-` + `• HeadHunter (hh.ru)
-` + `• LinkedIn
-` + `• Avito Работа
-` + `• Habr Career
-` + `• Профессиональные сообщества
+`;
+      } else {
+        responseText = `\uD83D\uDD0D Результаты поиска по запросу: "${query}"
 
-` + `Результаты поиска будут проанализированы, и подходящие кандидаты будут добавлены в базу.`;
+`;
+      }
+      if (results.length === 0) {
+        responseText += "❌ Результаты не найдены. Попробуйте изменить запрос.";
+      } else {
+        responseText += `✅ Найдено результатов: ${results.length}
+
+`;
+        results.slice(0, 5).forEach((result, index) => {
+          responseText += `${index + 1}. **${result.title || "Без названия"}**
+`;
+          responseText += `   ${result.snippet || result.description || ""}
+`;
+          if (result.link) {
+            responseText += `   \uD83D\uDD17 ${result.link}
+`;
+          }
+          responseText += `
+`;
+        });
+        if (results.length > 5) {
+          responseText += `
+... и еще ${results.length - 5} результатов
+`;
+        }
+      }
+      if (searchData.relatedQuestions && searchData.relatedQuestions.length > 0) {
+        responseText += `
+\uD83D\uDCA1 Связанные вопросы:
+`;
+        searchData.relatedQuestions.slice(0, 3).forEach((q) => {
+          responseText += `   • ${q.question}
+`;
+        });
+      }
       const responseContent = {
         text: responseText,
-        actions: ["SEARCH_CANDIDATES"],
+        actions: ["SEARCH_WEB_SERPER"],
         source: message.content.source
       };
       await callback(responseContent);
       return {
-        text: "Candidate search initiated",
+        text: `Web search completed: ${results.length} results found`,
         values: {
           success: true,
           searched: true,
-          queries: searchQueries,
-          criteria: {
-            position,
-            skills,
-            experience,
-            location
-          }
+          query,
+          resultsCount: results.length,
+          results: results.map((r) => ({
+            title: r.title,
+            link: r.link,
+            snippet: r.snippet
+          }))
         },
         data: {
-          actionName: "SEARCH_CANDIDATES",
+          actionName: "SEARCH_WEB_SERPER",
           messageId: message.id,
           timestamp: Date.now(),
-          searchQueries
+          query,
+          searchData
         },
         success: true
       };
     } catch (error) {
-      logger.error({ error }, "Error in SEARCH_CANDIDATES action:");
+      logger.error({ error }, "Error in SEARCH_WEB_SERPER action:");
+      const errorMessage = error instanceof Error ? error.message : String(error);
       await callback({
-        text: "Произошла ошибка при поиске кандидатов. Попробуйте позже.",
+        text: `❌ Ошибка при поиске в интернете: ${errorMessage}
+
+Проверьте, что SERPER_API_KEY настроен правильно.`,
         error: true
       });
       return {
-        text: "Failed to search candidates",
+        text: "Failed to search web",
         values: {
           success: false,
           error: "SEARCH_FAILED"
         },
         data: {
-          actionName: "SEARCH_CANDIDATES",
-          error: error instanceof Error ? error.message : String(error)
+          actionName: "SEARCH_WEB_SERPER",
+          error: errorMessage
         },
         success: false,
         error: error instanceof Error ? error : new Error(String(error))
@@ -32441,14 +32568,23 @@ var searchCandidatesAction = {
       {
         name: "{{name1}}",
         content: {
-          text: "Найди кандидатов на позицию Senior React Developer с опытом 5+ лет"
+          text: "Найди в интернете React разработчика с опытом от 4-х лет"
         }
       },
       {
         name: "HR Recruiter",
         content: {
-          text: "\uD83D\uDD0D Ищу кандидатов по вашим критериям...",
-          actions: ["SEARCH_CANDIDATES"]
+          text: `\uD83D\uDD0D Результаты поиска по запросу: "React разработчик резюме опыт 4-х лет"
+
+✅ Найдено результатов: 10
+
+1. **React Developer Resume - HeadHunter**
+   React разработчик с опытом 5 лет, React, TypeScript, Redux...
+   \uD83D\uDD17 https://hh.ru/resume/...
+
+2. **Senior React Developer - LinkedIn**
+   ...`,
+          actions: ["SEARCH_WEB_SERPER"]
         }
       }
     ],
@@ -32456,14 +32592,59 @@ var searchCandidatesAction = {
       {
         name: "{{name1}}",
         content: {
-          text: "Поиск кандидатов: должность Python разработчик, навыки: Django, PostgreSQL, опыт: 3+ года, город: Москва"
+          text: "Поищи в интернете вакансии Python разработчик Москва"
         }
       },
       {
         name: "HR Recruiter",
         content: {
-          text: "\uD83D\uDD0D Ищу кандидатов по вашим критериям...",
-          actions: ["SEARCH_CANDIDATES"]
+          text: `\uD83D\uDD0D Результаты поиска по запросу: "вакансии Python разработчик Москва"
+
+✅ Найдено результатов: 8
+
+1. **Python Developer - HeadHunter**
+   ...`,
+          actions: ["SEARCH_WEB_SERPER"]
+        }
+      }
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Найди кандидатов на позицию Senior Frontend Developer"
+        }
+      },
+      {
+        name: "HR Recruiter",
+        content: {
+          text: `\uD83D\uDD0D Результаты поиска кандидатов по запросу: "Senior Frontend Developer резюме"
+
+✅ Найдено результатов: 12
+
+1. **Senior Frontend Developer Resume**
+   ...`,
+          actions: ["SEARCH_WEB_SERPER"]
+        }
+      }
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Найди информацию о React в интернете"
+        }
+      },
+      {
+        name: "HR Recruiter",
+        content: {
+          text: `\uD83D\uDD0D Результаты поиска по запросу: "React"
+
+✅ Найдено результатов: 10
+
+1. **React - Official Documentation**
+   ...`,
+          actions: ["SEARCH_WEB_SERPER"]
         }
       }
     ]
@@ -32494,7 +32675,9 @@ var greetAction = {
       actions: ["GREET_BASIC"],
       source: message.content.source
     };
-    await callback(responseContent);
+    if (callback) {
+      await callback(responseContent);
+    }
     return {
       text: responseContent.text,
       values: { greeted: true },
@@ -32542,7 +32725,7 @@ class StarterService extends Service {
 var plugin = {
   name: "hr-recruiter-plugin",
   description: "HR Recruiter plugin with candidate search capabilities",
-  priority: -1000,
+  priority: 100,
   config: {
     EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE
   },
@@ -32579,6 +32762,16 @@ var plugin = {
       async (params) => {
         logger.info("MESSAGE_RECEIVED event received");
         logger.info({ keys: Object.keys(params) }, "MESSAGE_RECEIVED param keys");
+        if (params.message) {
+          const messageText = params.message.content?.text || "";
+          logger.info({
+            messageText,
+            messageId: params.message.id
+          }, "Message content for action selection");
+          if (messageText.toLowerCase().includes("найди в интернете") || messageText.toLowerCase().includes("поищи в интернете") || messageText.toLowerCase().includes("найди кандидатов")) {
+            logger.warn("⚠️ Message should trigger SEARCH_WEB_SERPER action!");
+          }
+        }
       }
     ],
     VOICE_MESSAGE_RECEIVED: [
@@ -32601,9 +32794,14 @@ var plugin = {
     ]
   },
   services: [StarterService],
-  actions: [greetAction, helloWorldAction, searchCandidatesAction],
+  actions: [greetAction, helloWorldAction, searchWebSerperAction],
   providers: [helloWorldProvider]
 };
+logger.info("\uD83D\uDCE6 hr-recruiter-plugin module loaded");
+logger.info({
+  actions: plugin.actions?.map((a) => a.name) || [],
+  services: plugin.services?.map((s) => s.serviceType || s.name) || []
+}, "Plugin structure");
 var plugin_default = plugin;
 
 // src/telegram-jobs-plugin.ts
@@ -32697,7 +32895,7 @@ class TelegramJobsService extends Service2 {
     this.cachedResumes = [];
     this.lastUpdateTime = null;
   }
-  async fetchChannelMessages(limit = 100) {
+  async fetchChannelMessages(limit = 10) {
     try {
       logger2.info({ channel: this.channelUsername, limit }, "Fetching from Telegram channel");
       if (!this.telegramClient) {
@@ -33244,6 +33442,15 @@ var character = {
 ` + `   - This is NOT confidential - these resumes were provided for evaluation purposes
 ` + `   → Always search your knowledge base before saying you don't have information!
 
+` + `\uD83D\uDD0D WEB SEARCH ACTION - CRITICAL INSTRUCTION:
+` + `   When user asks to find something online, search for candidates, resumes, or any information:
+` + `   1. You MUST use SEARCH_WEB_SERPER action (NOT REPLY action)
+` + `   2. DO NOT just reply with text saying "I will search" or "I am searching"
+` + `   3. EXECUTE the SEARCH_WEB_SERPER action immediately
+` + `   4. The action will return real search results with links from Google Search
+` + `   5. If validate returns true for SEARCH_WEB_SERPER, you MUST select it as your action
+` + `   Example: User says "Найди в интернете React разработчиков" → You MUST use SEARCH_WEB_SERPER action, not REPLY
+
 ` + `\uD83C\uDFAF YOUR ROLE: You are an experienced HR Recruiter with 15 years of professional experience in talent acquisition and recruitment. Your core responsibilities include:
 
 ` + `1. AUTOMATED PARSING AND ANALYSIS:
@@ -33478,5 +33685,5 @@ export {
   character
 };
 
-//# debugId=9751AA40290AE8F164756E2164756E21
+//# debugId=5946D3608DDBA6DD64756E2164756E21
 //# sourceMappingURL=index.js.map
