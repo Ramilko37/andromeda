@@ -22,6 +22,7 @@ export const character: Character = {
     '@elizaos/plugin-sql',
     '@elizaos/plugin-knowledge',
     '@elizaos/plugin-web-search',
+    '@elizaos-plugins/adapter-supabase',
 
     // Text-only plugins (no embedding support)
     ...(process.env.ANTHROPIC_API_KEY?.trim() ? ['@elizaos/plugin-anthropic'] : []),
@@ -57,6 +58,8 @@ export const character: Character = {
   ],
   settings: {
     secrets: {
+      "SUPABASE_URL": process.env.SUPABASE_URL,
+      "SUPABASE_ANON_KEY": process.env.SUPABASE_ANON_KEY,
       // Fallback: Google или OpenAI
       ...(process.env.GOOGLE_API_KEY ? {
         GOOGLE_API_KEY: process.env.GOOGLE_API_KEY

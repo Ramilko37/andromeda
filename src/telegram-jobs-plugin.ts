@@ -7,11 +7,14 @@ import type {
     IAgentRuntime,
     Memory,
     State,
+    UUID,
 } from '@elizaos/core';
+import { ChannelType } from '@elizaos/core';
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions';
 import { logger, Service } from '@elizaos/core';
 import * as readline from 'readline';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Интерфейс для резюме кандидата
@@ -75,7 +78,7 @@ class TelegramJobsService extends Service {
 
         // Пытаемся загрузить резюме при старте
         try {
-            await service.fetchChannelMessages();
+            await service.fetchChannelMessages(runtime);
         } catch (error) {
             logger.warn({ error }, 'Could not fetch messages on startup');
         }
@@ -158,7 +161,7 @@ class TelegramJobsService extends Service {
     /**
      * Получение резюме из канала
      */
-    async fetchChannelMessages(limit: number = 10): Promise<CandidateResume[]> {
+    async fetchChannelMessages(runtime: IAgentRuntime, limit: number = 10): Promise<CandidateResume[]> {
         try {
             logger.info({ channel: this.channelUsername, limit }, 'Fetching from Telegram channel');
 
@@ -207,6 +210,7 @@ class TelegramJobsService extends Service {
             console.log(`✅ Всего загружено и кэшировано: ${resumes.length} резюме`);
             console.log(`⏰ Время загрузки: ${new Date().toLocaleString('ru-RU')}`);
             console.log('========================================\n');
+
 
             return resumes;
         } catch (error) {
@@ -452,7 +456,7 @@ class TelegramJobsService extends Service {
             if (filters.forceRefresh || !this.lastUpdateTime ||
                 Date.now() - this.lastUpdateTime.getTime() > 3600000) { // 1 час
                 console.log('   🌐 Делаю НОВЫЙ запрос к Telegram...\n');
-                await this.fetchChannelMessages();
+                await this.fetchChannelMessages(this.runtime);
             } else {
                 console.log('   📦 Использую КЭШ (свежий, не требует обновления)\n');
             }
