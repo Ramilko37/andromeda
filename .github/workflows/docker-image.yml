@@ -16,7 +16,7 @@ jobs:
       packages: write    # важно, чтобы пушить в ghcr.io
 
     env:
-      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/eliza-agent
+      IMAGE_NAME: ghcr.io/ramilko37/eliza-agent
 
     steps:
       - name: Checkout repository
