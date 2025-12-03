@@ -1,6 +1,7 @@
 import { logger, type IAgentRuntime, type Project, type ProjectAgent } from '@elizaos/core';
 import starterPlugin from './plugin.ts';
 import telegramJobsPlugin from './telegram-jobs-plugin.ts';
+import resumesDbPlugin from './resumes-db-plugin.ts';
 import { character } from './character.ts';
 
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
@@ -15,6 +16,7 @@ export const projectAgent: ProjectAgent = {
   plugins: [
     starterPlugin,
     telegramJobsPlugin,  // Плагин для чтения резюме из @it_vakansii_jobs
+    resumesDbPlugin,     // Схема для хранения резюме в БД
   ]
 };
 

@@ -9,12 +9,10 @@ import type {
     State,
     UUID,
 } from '@elizaos/core';
-import { ChannelType } from '@elizaos/core';
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions';
 import { logger, Service } from '@elizaos/core';
 import * as readline from 'readline';
-import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Интерфейс для резюме кандидата
@@ -48,6 +46,148 @@ function askQuestion(query: string): Promise<string> {
             resolve(answer);
         })
     );
+}
+
+/**
+ * Получение Supabase URL из переменных окружения или DATABASE_URL
+ */
+function getSupabaseUrl(): string {
+    // Проверяем явную переменную SUPABASE_URL
+    if (process.env.SUPABASE_URL) {
+        const url = process.env.SUPABASE_URL.trim();
+        // Проверяем, что это HTTPS URL
+        if (url.startsWith('https://') || url.startsWith('http://')) {
+            logger.debug({ source: 'SUPABASE_URL', url }, 'Using Supabase URL from SUPABASE_URL env var');
+            return url;
+        }
+        // Если это PostgreSQL connection string, извлекаем URL из него
+        else if (url.startsWith('postgresql://')) {
+            const match = url.match(/@db\.([^.]+)\.supabase\.co/);
+            if (match && match[1]) {
+                const projectId = match[1];
+                const supabaseUrl = `https://${projectId}.supabase.co`;
+                logger.info({ source: 'SUPABASE_URL', projectId, extractedUrl: supabaseUrl },
+                    'Extracted Supabase URL from PostgreSQL connection string in SUPABASE_URL');
+                return supabaseUrl;
+            } else {
+                logger.warn({ url }, 'SUPABASE_URL contains PostgreSQL connection string but cannot extract project ID');
+            }
+        } else {
+            logger.warn({ url }, 'SUPABASE_URL env var is not a valid HTTPS URL or PostgreSQL connection string, ignoring');
+        }
+    }
+
+    // Пытаемся извлечь из DATABASE_URL если это Supabase PostgreSQL connection string
+    // Формат: postgresql://...@db.PROJECT_ID.supabase.co:5432/...
+    const databaseUrl = process.env.DATABASE_URL;
+    if (databaseUrl) {
+        // Извлекаем project ID из строки подключения PostgreSQL
+        // Пример: postgresql://...@db.lfileotsqnyziwxltogt.supabase.co:5432/...
+        const match = databaseUrl.match(/@db\.([^.]+)\.supabase\.co/);
+        if (match && match[1]) {
+            const projectId = match[1];
+            const supabaseUrl = `https://${projectId}.supabase.co`;
+            logger.debug({ source: 'DATABASE_URL', projectId, url: supabaseUrl }, 'Extracted Supabase URL from DATABASE_URL');
+            return supabaseUrl;
+        }
+
+        // Также проверяем HTTPS URL в DATABASE_URL (если вдруг там REST URL)
+        const httpsMatch = databaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/);
+        if (httpsMatch) {
+            const supabaseUrl = `https://${httpsMatch[1]}.supabase.co`;
+            logger.debug({ source: 'DATABASE_URL', url: supabaseUrl }, 'Found HTTPS URL in DATABASE_URL');
+            return supabaseUrl;
+        }
+    }
+
+    // Используем известный URL из MCP (fallback)
+    const fallbackUrl = 'https://lfileotsqnyziwxltogt.supabase.co';
+    logger.debug({ source: 'fallback', url: fallbackUrl }, 'Using fallback Supabase URL');
+    return fallbackUrl;
+}
+
+/**
+ * Сохранение резюме в Supabase через REST API
+ * Использует snake_case имена колонок для соответствия схеме базы данных
+ */
+async function saveResumesToSupabase(resumes: Array<{ parsed_content: string }>): Promise<number> {
+    // Предпочитаем service_role key для серверных операций (обходит RLS)
+    // Если нет service_role, используем anon key (требует RLS политики)
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        || process.env.SUPABASE_SERVICE_KEY
+        || process.env.SUPABASE_ANON_KEY
+        || process.env.SUPABASE_KEY;
+
+    if (!supabaseKey) {
+        logger.warn('Supabase credentials not found. Set SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY in .env');
+        return 0;
+    }
+
+    const isServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+    if (isServiceRole) {
+        logger.debug('Using Supabase service_role key (bypasses RLS)');
+    } else {
+        logger.debug('Using Supabase anon key (requires RLS policies)');
+    }
+
+    let supabaseUrl = getSupabaseUrl();
+
+    // Дополнительная валидация и исправление URL
+    if (!supabaseUrl) {
+        logger.error('Failed to get Supabase URL');
+        return 0;
+    }
+
+    // Убеждаемся, что URL начинается с https:// и не является PostgreSQL connection string
+    if (supabaseUrl.startsWith('postgresql://')) {
+        logger.error({ url: supabaseUrl }, 'Invalid URL - received PostgreSQL connection string instead of HTTPS URL');
+        // Попытаемся извлечь правильный URL
+        const match = supabaseUrl.match(/@db\.([^.]+)\.supabase\.co/);
+        if (match && match[1]) {
+            supabaseUrl = `https://${match[1]}.supabase.co`;
+            logger.info({ extractedUrl: supabaseUrl }, 'Extracted Supabase URL from PostgreSQL connection string');
+        } else {
+            logger.error('Cannot extract Supabase URL from PostgreSQL connection string');
+            return 0;
+        }
+    }
+
+    // Валидация URL - должен быть HTTPS
+    if (!supabaseUrl.startsWith('https://')) {
+        logger.error({ url: supabaseUrl }, 'Invalid Supabase URL - must start with https://');
+        return 0;
+    }
+
+    const apiUrl = `${supabaseUrl}/rest/v1/resumes`;
+    logger.debug({ apiUrl, count: resumes.length }, 'Saving resumes to Supabase');
+
+    try {
+        // Вставляем каждое резюме отдельно, так как Supabase REST API требует массив
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Prefer': 'return=representation',
+            },
+            body: JSON.stringify(resumes),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            logger.error({ status: response.status, error: errorText }, 'Supabase API error');
+            throw new Error(`Supabase API error: ${response.status} - ${errorText}`);
+        }
+
+        const inserted = await response.json();
+        const count = Array.isArray(inserted) ? inserted.length : resumes.length;
+        logger.info({ count, url: supabaseUrl }, 'Successfully saved resumes to Supabase');
+        return count;
+    } catch (error) {
+        logger.error({ error, url: supabaseUrl }, 'Failed to save resumes to Supabase');
+        throw error;
+    }
 }
 
 /**
@@ -184,6 +324,23 @@ class TelegramJobsService extends Service {
 
             this.cachedResumes = resumes;
             this.lastUpdateTime = new Date();
+
+            // Сохраняем сырое содержимое резюме в Supabase
+            try {
+                const values = resumes
+                    .map((resume) => resume.rawText || '')
+                    .filter((text) => text.trim().length > 0)
+                    .map((parsedContent) => ({ parsed_content: parsedContent }));
+
+                if (values.length > 0) {
+                    const insertedCount = await saveResumesToSupabase(values);
+                    logger.info({ inserted: insertedCount }, '✅ Saved resumes to Supabase');
+                } else {
+                    logger.debug('No parsed resume texts to save');
+                }
+            } catch (error) {
+                logger.warn({ error }, 'Failed to save resumes to Supabase');
+            }
 
             logger.info({
                 totalMessages: messages.length,
