@@ -53,9 +53,6 @@ RUN apt-get update && \
 RUN npm install -g bun@latest && \
     npm cache clean --force
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser
-
 # Copy package files
 COPY package.json bun.lock* ./
 
@@ -76,10 +73,10 @@ RUN apt-get autoremove -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.npm /root/.cache
 
-# Set ownership
-RUN chown -R appuser:appuser /app
+# Use existing node user (node:20-slim already has node user with UID 1000)
+RUN chown -R node:node /app
 
-USER appuser
+USER node
 
 ENV NODE_ENV=production
 
