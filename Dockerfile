@@ -1,30 +1,28 @@
-# Multi-stage build для уменьшения размера образа
+# Оптимизированный multi-stage build для уменьшения размера образа
 
 # ============================================
-# Stage 1: Build stage - сборка приложения
+# Stage 1: Build - сборка приложения
 # ============================================
 FROM node:20-slim AS builder
 
-# Install build dependencies
+WORKDIR /app
+
+# Install build dependencies only
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
     python3 \
     make \
     g++ \
-    && apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Install bun
 RUN npm install -g bun@latest
 
-# Set working directory
-WORKDIR /app
-
 # Copy package files
 COPY package.json bun.lock* ./
 
-# Install dependencies
+# Install all dependencies (including dev for build)
 RUN bun install --frozen-lockfile
 
 # Copy source code
@@ -33,79 +31,58 @@ COPY . .
 # Build application
 RUN bun run build
 
+# Install production dependencies only (after build)
+RUN rm -rf node_modules && \
+    bun install --frozen-lockfile --production && \
+    bun pm cache rm
+
 # ============================================
-# Stage 2: Runtime stage - минимальный образ
+# Stage 2: Runtime - минимальный production образ
 # ============================================
 FROM node:20-slim AS runtime
 
-# Install only runtime dependencies
+WORKDIR /app
+
+# Install only essential runtime tools
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
-    && apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
-# Install bun (lightweight)
-RUN npm install -g bun@latest
+# Install bun (runtime only)
+RUN npm install -g bun@latest && \
+    npm cache clean --force
 
-# Create app user
+# Create non-root user
 RUN useradd -m -u 1000 appuser
-
-# Set working directory
-WORKDIR /app
 
 # Copy package files
 COPY package.json bun.lock* ./
 
-# Install only production dependencies
-RUN bun install --frozen-lockfile --production && \
-    bun pm cache rm && \
-    rm -rf /root/.bun/install/cache && \
-    rm -rf /tmp/*
-
-# Copy built application from builder
+# Copy built application and production node_modules from builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules/.bin ./node_modules/.bin
+COPY --from=builder /app/node_modules ./node_modules
 
-# Create wrapper script for elizaos
-RUN echo '#!/bin/sh\nexec /app/node_modules/.bin/elizaos "$@"' > /usr/local/bin/elizaos && \
+# Create minimal wrapper script
+RUN echo '#!/bin/sh\nexec bun /app/node_modules/.bin/elizaos "$@"' > /usr/local/bin/elizaos && \
     chmod +x /usr/local/bin/elizaos
 
-# Remove unnecessary files
-RUN rm -rf /app/src \
-    /app/__tests__ \
-    /app/*.test.ts \
-    /app/*.spec.ts \
-    /app/cypress \
-    /app/docs \
-    /app/*.md \
-    /app/Dockerfile* \
-    /app/docker-compose*.yml \
-    /app/.git \
-    /app/.github \
-    /app/scripts \
-    /app/vite.config.ts \
-    /app/tailwind.config.js \
-    /app/postcss.config.js \
-    /app/cypress.config.ts \
-    /app/build.ts \
-    /app/tsconfig*.json || true
+# Aggressive cleanup of node_modules
+RUN find /app/node_modules -type f \( -name "*.md" -o -name "*.map" -o -name "*.test.*" -o -name "*.spec.*" \) -delete && \
+    find /app/node_modules -type d \( -name "__tests__" -o -name "test" -o -name "tests" -o -name ".git" \) -exec rm -rf {} + 2>/dev/null || true
 
-# Change ownership
+# Final cleanup
+RUN apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.npm /root/.cache
+
+# Set ownership
 RUN chown -R appuser:appuser /app
 
-# Switch to non-root user
 USER appuser
 
-# Environment variables
 ENV NODE_ENV=production
 
-# Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:3000/ || exit 1
-
-# Start application
 CMD ["elizaos", "start"]
