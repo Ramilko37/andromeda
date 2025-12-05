@@ -59,11 +59,7 @@ README.md
 !DEPLOY.md
 docs/
 
-# Source files (only dist is needed)
-src/
-!src/frontend
-
-# Tests
+# Tests (not needed for build)
 __tests__
 *.test.ts
 *.test.js
@@ -72,19 +68,20 @@ __tests__
 cypress/
 cypress.config.ts
 test/
+src/__tests__/
 
 # Development files
 scripts/
-src/__tests__/
 *.test.ts
 *.spec.ts
 
-# Build tools (not needed in production)
+# Build tools - KEEP build.ts and tsconfig.build.json for Docker build!
+# But exclude other config files
 vite.config.ts
 tailwind.config.js
 postcss.config.js
-tsconfig*.json
-build.ts
+tsconfig.json
+# Keep tsconfig.build.json - it's needed for build!
 
 # ElizaOS specific
 .eliza
